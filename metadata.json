@@ -1,0 +1,7 @@
+{
+  "name": "HireVision AI - Google Standard Interview Assistant",
+  "description": "A high-fidelity AI-powered interview assistant that analyzes resumes, job descriptions, and conducts real-time voice-based mock interviews with deep performance feedback.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
