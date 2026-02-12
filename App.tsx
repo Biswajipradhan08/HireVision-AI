@@ -7,14 +7,17 @@ import NewInterviewSetup from './components/NewInterviewSetup';
 import FitAnalysis from './components/FitAnalysis';
 import LiveInterview from './components/LiveInterview';
 import ReportView from './components/ReportView';
+import PaymentModal from './components/PaymentModal';
 import { UserProfile, InterviewSession } from './types';
 import { dbService } from './services/dbService';
+import { authService } from './services/authService';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [sessions, setSessions] = useState<InterviewSession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentSession, setCurrentSession] = useState<InterviewSession | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   // Initial Load from DBMS (Backup)
   useEffect(() => {
@@ -39,6 +42,16 @@ const App: React.FC = () => {
     setUser(null);
     setSessions([]);
     await dbService.clearAll();
+  };
+
+  const handleUpgradeClick = () => {
+    setShowPaymentModal(true);
+  };
+
+  const handlePaymentSuccess = async (updatedUser: UserProfile) => {
+    setUser(updatedUser);
+    await dbService.saveUser(updatedUser);
+    setShowPaymentModal(false);
   };
 
   const startNewInterview = (session: InterviewSession) => {
@@ -82,25 +95,75 @@ const App: React.FC = () => {
           />
           <Route 
             path="/dashboard" 
-            element={user ? <Dashboard user={user} sessions={sessions} onLogout={handleLogout} onNewInterview={startNewInterview} /> : <Navigate to="/" />} 
+            element={user ? (
+              <Dashboard 
+                user={user} 
+                sessions={sessions} 
+                onLogout={handleLogout} 
+                onNewInterview={startNewInterview}
+                onUpgradeClick={handleUpgradeClick}
+              />
+            ) : (
+              <Navigate to="/" />
+            )} 
           />
           <Route 
             path="/setup" 
-            element={user ? <NewInterviewSetup user={user} onStart={startNewInterview} /> : <Navigate to="/" />} 
+            element={user ? (
+              <NewInterviewSetup 
+                user={user} 
+                onStart={startNewInterview}
+                onUpgradeClick={handleUpgradeClick}
+              />
+            ) : (
+              <Navigate to="/" />
+            )} 
           />
           <Route 
             path="/analysis" 
-            element={user && currentSession ? <FitAnalysis session={currentSession} onStartInterview={() => {}} /> : <Navigate to="/dashboard" />} 
+            element={user && currentSession ? (
+              <FitAnalysis 
+                session={currentSession} 
+                onStartInterview={() => {}}
+                onUpgradeClick={handleUpgradeClick}
+              />
+            ) : (
+              <Navigate to="/dashboard" />
+            )} 
           />
           <Route 
             path="/interview" 
-            element={user && currentSession ? <LiveInterview session={currentSession} onComplete={updateSession} /> : <Navigate to="/dashboard" />} 
+            element={user && currentSession ? (
+              <LiveInterview 
+                session={currentSession} 
+                onComplete={updateSession}
+                onUpgradeClick={handleUpgradeClick}
+              />
+            ) : (
+              <Navigate to="/dashboard" />
+            )} 
           />
-           <Route 
+          <Route 
             path="/report/:id" 
-            element={user ? <ReportView sessions={sessions} /> : <Navigate to="/dashboard" />} 
+            element={user ? (
+              <ReportView 
+                sessions={sessions}
+                onUpgradeClick={handleUpgradeClick}
+              />
+            ) : (
+              <Navigate to="/dashboard" />
+            )} 
           />
         </Routes>
+
+        {/* Payment Modal */}
+        {showPaymentModal && user && (
+          <PaymentModal
+            user={user}
+            onClose={() => setShowPaymentModal(false)}
+            onPaymentSuccess={handlePaymentSuccess}
+          />
+        )}
       </div>
     </Router>
   );

@@ -1,13 +1,18 @@
 
 import React, { useState } from 'react';
+import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { UserProfile } from '../types';
+import { authService } from '../services/authService';
+import OTPVerification from './OTPVerification';
 
 interface AuthPageProps {
   onLogin: (profile: UserProfile) => void;
 }
 
+type AuthStep = 'method' | 'form' | 'otp' | 'google-complete';
+
 const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
-  const [isLogin, setIsLogin] = useState(true);
+  const [authStep, setAuthStep] = useState<AuthStep>('method');
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -15,131 +20,385 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     education: '',
     city: ''
   });
+  const [tempUser, setTempUser] = useState<UserProfile | null>(null);
+  const [generatedOTP, setGeneratedOTP] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID_HERE';
+
+  // Step 1: Email/Phone form -> OTP
+  const handleEmailSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulate Authentication Logic
-    onLogin({
-      ...formData,
-      isAuthenticated: true
-    });
+    setError('');
+
+    if (!formData.email || !formData.number) {
+      setError('Email and phone number are required');
+      return;
+    }
+
+    setIsLoading(true);
+
+    // Generate OTP
+    const otp = authService.generateOTP(formData.number);
+    setGeneratedOTP(otp);
+
+    // Create temp user object
+    const tempUserData: UserProfile = {
+      name: formData.name || 'User',
+      email: formData.email,
+      number: formData.number,
+      education: formData.education,
+      city: formData.city,
+      isAuthenticated: false,
+      authMethod: 'otp',
+      subscriptionPlan: 'free'
+    };
+
+    setTempUser(tempUserData);
+    setAuthStep('otp');
+    setIsLoading(false);
   };
 
-  const handleGoogleLogin = () => {
-    // Simulate Google OAuth
-    onLogin({
-      name: 'John Doe',
-      email: 'john.doe@google.com',
-      number: '+91 98765 43210',
-      education: 'B.Tech in Computer Science',
-      city: 'Bangalore',
-      isAuthenticated: true
-    });
+  // Step 2: OTP verification -> Complete signup
+  const handleOTPSuccess = (phone: string) => {
+    if (!tempUser) return;
+
+    const completedUser: UserProfile = {
+      ...tempUser,
+      isAuthenticated: true,
+      isOTPVerified: true,
+      number: phone
+    };
+
+    onLogin(completedUser);
   };
 
-  return (
-    <div className="flex min-h-screen items-center justify-center p-6 bg-gray-50">
-      <div className="w-full max-w-md bg-white border border-gray-200 p-10 shadow-sm rounded-none">
-        <div className="mb-10">
-          <h1 className="text-3xl font-extrabold tracking-tighter mb-2">HIREVISION AI</h1>
-          <p className="text-gray-500 font-medium">Empowering candidates with Top-graded live interview.</p>
-        </div>
+  // Step 3: Google OAuth
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+    try {
+      setIsLoading(true);
+      setError('');
 
-        <button 
-          onClick={handleGoogleLogin}
-          className="w-full flex items-center justify-center gap-3 border border-gray-900 py-3 font-semibold hover:bg-gray-900 hover:text-white transition-all duration-300 mb-6"
-        >
-          <svg className="w-5 h-5" viewBox="0 0 24 24">
-            <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-            <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-            <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-            <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-          </svg>
-          Continue with Google
-        </button>
+      // Decode JWT token (in production, verify on backend)
+      const base64Url = credentialResponse.credential.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(
+        atob(base64)
+          .split('')
+          .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+          .join('')
+      );
 
-        <div className="relative flex items-center mb-6">
-          <div className="flex-grow border-t border-gray-200"></div>
-          <span className="flex-shrink mx-4 text-gray-400 text-sm uppercase tracking-widest font-bold">OR</span>
-          <div className="flex-grow border-t border-gray-200"></div>
-        </div>
+      const googleUser = JSON.parse(jsonPayload);
+      const user = authService.createUserFromGoogle(googleUser);
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {!isLogin && (
-            <>
-              <div>
-                <label className="block text-xs font-bold uppercase mb-1">Full Name</label>
-                <input 
-                  required
-                  type="text" 
-                  className="w-full border-b border-gray-900 py-2 focus:outline-none focus:border-blue-600 font-medium" 
-                  value={formData.name}
-                  onChange={e => setFormData({...formData, name: e.target.value})}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold uppercase mb-1">Mobile Number</label>
-                <input 
-                  required
-                  type="tel" 
-                  className="w-full border-b border-gray-900 py-2 focus:outline-none focus:border-blue-600 font-medium" 
-                  value={formData.number}
-                  onChange={e => setFormData({...formData, number: e.target.value})}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold uppercase mb-1">Education</label>
-                <input 
-                  required
-                  type="text" 
-                  className="w-full border-b border-gray-900 py-2 focus:outline-none focus:border-blue-600 font-medium" 
-                  value={formData.education}
-                  onChange={e => setFormData({...formData, education: e.target.value})}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold uppercase mb-1">City</label>
-                <input 
-                  required
-                  type="text" 
-                  className="w-full border-b border-gray-900 py-2 focus:outline-none focus:border-blue-600 font-medium" 
-                  value={formData.city}
-                  onChange={e => setFormData({...formData, city: e.target.value})}
-                />
-              </div>
-            </>
-          )}
-          <div>
-            <label className="block text-xs font-bold uppercase mb-1">Email Address</label>
-            <input 
-              required
-              type="email" 
-              className="w-full border-b border-gray-900 py-2 focus:outline-none focus:border-blue-600 font-medium" 
-              value={formData.email}
-              onChange={e => setFormData({...formData, email: e.target.value})}
-            />
+      // Store temp user and show form to complete profile
+      setTempUser(user);
+      setFormData({
+        name: user.name,
+        email: user.email,
+        number: user.number,
+        education: user.education,
+        city: user.city
+      });
+      setAuthStep('google-complete');
+    } catch (err) {
+      setError('Google login failed. Please try again.');
+      console.error('Google login error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleError = () => {
+    setError('Google login failed. Please try again.');
+  };
+
+  // Complete Google signup with additional details
+  const handleGoogleComplete = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!formData.number) {
+      setError('Phone number is required');
+      return;
+    }
+
+    if (!tempUser) return;
+
+    // Generate OTP for phone verification
+    const otp = authService.generateOTP(formData.number);
+    setGeneratedOTP(otp);
+
+    const updatedUser = {
+      ...tempUser,
+      name: formData.name,
+      education: formData.education,
+      city: formData.city,
+      number: formData.number
+    };
+
+    setTempUser(updatedUser);
+    setAuthStep('otp');
+  };
+
+  // ============= RENDER METHODS =============
+
+  // Method selection screen
+  if (authStep === 'method') {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6 bg-gray-50">
+        <div className="w-full max-w-md bg-white border border-gray-200 p-10 shadow-sm rounded-none">
+          <div className="mb-10">
+            <h1 className="text-3xl font-extrabold tracking-tighter mb-2">HIREVISION AI</h1>
+            <p className="text-gray-500 font-medium">Empowering candidates with top-graded live interviews.</p>
           </div>
-          
-          <button 
-            type="submit" 
-            className="w-full bg-black text-white py-4 font-bold tracking-widest uppercase hover:bg-gray-800 transition-colors mt-4"
-          >
-            {isLogin ? 'Sign In' : 'Create Account'}
-          </button>
-        </form>
 
-        <p className="mt-8 text-center text-sm font-medium">
-          {isLogin ? "Don't have an account?" : "Already have an account?"}{' '}
-          <button 
-            onClick={() => setIsLogin(!isLogin)}
-            className="font-bold underline decoration-2 underline-offset-4"
-          >
-            {isLogin ? 'Sign Up' : 'Log In'}
-          </button>
-        </p>
+          <div className="space-y-4 mb-8">
+            <h2 className="text-xl font-bold mb-6">Sign Up or Log In</h2>
+
+            {/* Google OAuth */}
+            <div>
+              <GoogleOAuthProvider clientId={googleClientId}>
+                <GoogleLogin
+                  onSuccess={handleGoogleSuccess}
+                  onError={handleGoogleError}
+                  useOneTap
+                />
+              </GoogleOAuthProvider>
+            </div>
+
+            <div className="relative flex items-center my-6">
+              <div className="flex-grow border-t border-gray-200"></div>
+              <span className="flex-shrink mx-4 text-gray-400 text-sm uppercase tracking-widest font-bold">OR</span>
+              <div className="flex-grow border-t border-gray-200"></div>
+            </div>
+
+            {/* Email/OTP method */}
+            <button
+              onClick={() => setAuthStep('form')}
+              className="w-full border border-gray-900 py-3 font-semibold hover:bg-gray-900 hover:text-white transition-all duration-300"
+            >
+              Continue with Email & OTP
+            </button>
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 p-4 rounded text-sm text-red-700">
+              {error}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  // Email/Phone form
+  if (authStep === 'form') {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6 bg-gray-50">
+        <div className="w-full max-w-md bg-white border border-gray-200 p-10 shadow-sm rounded-none">
+          <div className="mb-10">
+            <h1 className="text-3xl font-extrabold tracking-tighter mb-2">HIREVISION AI</h1>
+          </div>
+
+          <h2 className="text-2xl font-bold mb-6">Create Your Account</h2>
+
+          <form onSubmit={handleEmailSignup} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold uppercase mb-1">Full Name</label>
+              <input
+                required
+                type="text"
+                className="w-full border-b border-gray-900 py-2 focus:outline-none focus:border-blue-600 font-medium"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase mb-1">Email Address</label>
+              <input
+                required
+                type="email"
+                className="w-full border-b border-gray-900 py-2 focus:outline-none focus:border-blue-600 font-medium"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase mb-1">Mobile Number</label>
+              <input
+                required
+                type="tel"
+                placeholder="+91 98765 43210"
+                className="w-full border-b border-gray-900 py-2 focus:outline-none focus:border-blue-600 font-medium"
+                value={formData.number}
+                onChange={(e) => setFormData({ ...formData, number: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase mb-1">Education</label>
+              <input
+                required
+                type="text"
+                placeholder="e.g., B.Tech in Computer Science"
+                className="w-full border-b border-gray-900 py-2 focus:outline-none focus:border-blue-600 font-medium"
+                value={formData.education}
+                onChange={(e) => setFormData({ ...formData, education: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase mb-1">City</label>
+              <input
+                required
+                type="text"
+                placeholder="e.g., Bangalore"
+                className="w-full border-b border-gray-900 py-2 focus:outline-none focus:border-blue-600 font-medium"
+                value={formData.city}
+                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+              />
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 p-4 rounded text-sm text-red-700">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-black text-white py-4 font-bold tracking-widest uppercase hover:bg-gray-800 transition-colors mt-4 disabled:opacity-50"
+            >
+              {isLoading ? 'Processing...' : 'Verify with OTP'}
+            </button>
+          </form>
+
+          <button
+            onClick={() => setAuthStep('method')}
+            className="w-full text-center text-gray-500 hover:text-gray-700 font-medium mt-6"
+          >
+            ← Back to Sign In Methods
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // OTP verification
+  if (authStep === 'otp' && tempUser) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6 bg-gray-50">
+        <div className="w-full max-w-md bg-white border border-gray-200 p-10 shadow-sm rounded-none">
+          <div className="mb-10">
+            <h1 className="text-3xl font-extrabold tracking-tighter mb-2">HIREVISION AI</h1>
+          </div>
+
+          <OTPVerification
+            phone={tempUser.number}
+            email={tempUser.email}
+            generatedOTP={generatedOTP}
+            onSuccess={handleOTPSuccess}
+            onBack={() => {
+              setAuthStep('form');
+              setGeneratedOTP('');
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // Google complete profile
+  if (authStep === 'google-complete' && tempUser) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6 bg-gray-50">
+        <div className="w-full max-w-md bg-white border border-gray-200 p-10 shadow-sm rounded-none">
+          <div className="mb-10">
+            <h1 className="text-3xl font-extrabold tracking-tighter mb-2">HIREVISION AI</h1>
+          </div>
+
+          <h2 className="text-2xl font-bold mb-6">Complete Your Profile</h2>
+          <p className="text-gray-600 text-sm mb-6">We need a few more details to complete your signup</p>
+
+          <form onSubmit={handleGoogleComplete} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold uppercase mb-1">Full Name</label>
+              <input
+                required
+                type="text"
+                className="w-full border-b border-gray-900 py-2 focus:outline-none focus:border-blue-600 font-medium"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase mb-1">Mobile Number</label>
+              <input
+                required
+                type="tel"
+                placeholder="+91 98765 43210"
+                className="w-full border-b border-gray-900 py-2 focus:outline-none focus:border-blue-600 font-medium"
+                value={formData.number}
+                onChange={(e) => setFormData({ ...formData, number: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase mb-1">Education</label>
+              <input
+                type="text"
+                placeholder="e.g., B.Tech in Computer Science"
+                className="w-full border-b border-gray-900 py-2 focus:outline-none focus:border-blue-600 font-medium"
+                value={formData.education}
+                onChange={(e) => setFormData({ ...formData, education: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase mb-1">City</label>
+              <input
+                type="text"
+                placeholder="e.g., Bangalore"
+                className="w-full border-b border-gray-900 py-2 focus:outline-none focus:border-blue-600 font-medium"
+                value={formData.city}
+                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+              />
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 p-4 rounded text-sm text-red-700">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-black text-white py-4 font-bold tracking-widest uppercase hover:bg-gray-800 transition-colors mt-4 disabled:opacity-50"
+            >
+              {isLoading ? 'Processing...' : 'Verify Phone with OTP'}
+            </button>
+          </form>
+
+          <button
+            onClick={() => setAuthStep('method')}
+            className="w-full text-center text-gray-500 hover:text-gray-700 font-medium mt-6"
+          >
+            ← Back to Sign In Methods
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 };
 
 export default AuthPage;

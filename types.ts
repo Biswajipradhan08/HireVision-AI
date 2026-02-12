@@ -1,5 +1,6 @@
 
 export interface UserProfile {
+  id?: string;
   name: string;
   email: string;
   number: string;
@@ -7,6 +8,38 @@ export interface UserProfile {
   city: string;
   isAuthenticated: boolean;
   photoURL?: string;
+  authMethod?: 'email' | 'google' | 'otp';
+  subscriptionPlan?: 'free' | 'premium';
+  subscriptionExpiresAt?: string;
+  isOTPVerified?: boolean;
+}
+
+export interface OTPVerification {
+  phone: string;
+  otp: string;
+  attempts: number;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface SubscriptionPlan {
+  id: string;
+  name: 'Free' | 'Premium';
+  price: number;
+  currency: string;
+  features: string[];
+  duration: number; // in days
+}
+
+export interface PaymentOrder {
+  orderId: string;
+  customerId: string;
+  amount: number;
+  currency: string;
+  plan: 'premium';
+  status: 'pending' | 'success' | 'failed';
+  createdAt: string;
+  expiresAt: string;
 }
 
 export interface InterviewSession {
