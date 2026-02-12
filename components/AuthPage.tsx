@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
+import { GoogleLogin } from '@react-oauth/google';
 import { UserProfile } from '../types';
 import { authService } from '../services/authService';
 import OTPVerification from './OTPVerification';
@@ -24,8 +24,6 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const [generatedOTP, setGeneratedOTP] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID_HERE';
 
   // Step 1: Email/Phone form -> OTP
   const handleEmailSignup = async (e: React.FormEvent) => {
@@ -159,14 +157,11 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
             <h2 className="text-xl font-bold mb-6">Sign Up or Log In</h2>
 
             {/* Google OAuth */}
-            <div>
-              <GoogleOAuthProvider clientId={googleClientId}>
-                <GoogleLogin
-                  onSuccess={handleGoogleSuccess}
-                  onError={handleGoogleError}
-                  useOneTap
-                />
-              </GoogleOAuthProvider>
+            <div className="flex justify-center">
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={handleGoogleError}
+              />
             </div>
 
             <div className="relative flex items-center my-6">
